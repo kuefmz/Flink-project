@@ -18,38 +18,21 @@ package master;
  * limitations under the License.
  */
 
-import org.apache.flink.api.java.DataSet;
-import org.apache.flink.api.java.ExecutionEnvironment;
-import org.apache.flink.api.common.functions.FlatMapFunction;
-import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.util.Collector;
-import org.apache.flink.api.java.tuple.Tuple8;
-import org.apache.flink.api.java.tuple.Tuple7;
-import org.apache.flink.api.java.tuple.Tuple6;
-import org.apache.flink.api.java.tuple.Tuple;
+import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.common.functions.MapFunction;
-import org.apache.flink.api.common.serialization.SimpleStringEncoder;
-import org.apache.flink.api.java.utils.ParameterTool;
+import org.apache.flink.api.common.functions.ReduceFunction;
+import org.apache.flink.api.java.tuple.*;
 import org.apache.flink.core.fs.FileSystem;
-import org.apache.flink.core.fs.Path;
 import org.apache.flink.streaming.api.datastream.DataStream;
-import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.sink.filesystem.StreamingFileSink;
-import org.apache.flink.streaming.api.functions.sink.filesystem.rollingpolicies.DefaultRollingPolicy;
-import org.apache.flink.streaming.api.datastream.KeyedStream;
 import org.apache.flink.streaming.api.functions.windowing.WindowFunction;
-import org.apache.flink.api.common.functions.FilterFunction;
-import org.apache.flink.streaming.api.datastream.WindowedStream;
 import org.apache.flink.streaming.api.windowing.windows.GlobalWindow;
+import org.apache.flink.util.Collector;
 
-
-import java.io.*;
-import java.util.*;
-import java.lang.Integer;
-import java.lang.String;
-
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 public class VehicleTelematics {
 
@@ -84,6 +67,9 @@ public class VehicleTelematics {
 			}
 		}).setParallelism(1);
 
+
+
+
 		// Speed radar
 
 		SingleOutputStreamOperator speedFines = input.filter(new FilterFunction<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
@@ -102,7 +88,76 @@ public class VehicleTelematics {
 		
 		// print the results for speedfines
 		speedFines.writeAsCsv(outputFilePath+"/speedfines.csv", FileSystem.WriteMode.OVERWRITE).setParallelism(1);
-		
+
+
+
+
+		// ---------------------------------------------------------------------------------
+		// Average speed
+
+
+		SingleOutputStreamOperator avgspeed =
+				input.filter(new FilterFunction<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
+							@Override
+							public boolean filter(Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> d) throws Exception {
+								return ((52 == d.f6) || (d.f6 == 56));
+							}
+						}).setParallelism(1)
+						.map(new MapFunction<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>, Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
+							@Override
+							public Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> map(Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> x) {
+								// <Time1, Time2, VID, XWay, Dir, Seg1, Seg2, Pos1, Pos2>
+								return new Tuple9<>(x.f0, x.f0, x.f1, x.f3, x.f5, x.f6, x.f6, x.f7, x.f7);
+							}
+						})
+						.keyBy(2)
+						.reduce(new ReduceFunction<Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
+							@Override
+							public Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> reduce(Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> x, Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> y) throws Exception {
+								//handle
+								int dir = x.f4;
+								int startSeg, endSeg, startPos, endPos, startTime, endTime;
+								if (dir == 0) {
+									startSeg = Math.min(x.f5, y.f5);
+									endSeg = Math.max(x.f6, y.f6);
+									startPos = Math.min(x.f7, y.f7);
+									endPos = Math.max(x.f8, y.f8);
+								} else {
+									startSeg = Math.max(x.f5, y.f5);
+									endSeg = Math.min(x.f6, y.f6);
+									startPos = Math.max(x.f7, y.f7);
+									endPos = Math.min(x.f8, y.f8);
+								}
+								startTime = Math.min(x.f0, y.f0);
+								endTime = Math.max(x.f1, y.f1);
+								// <Time1, Time2, VID, XWay, Dir, Seg1, Seg2, Pos1, Pos2>
+								return new Tuple9<>(startTime, endTime, x.f2, x.f3, dir, startSeg, endSeg, startPos, endPos);
+							}
+						})
+						.filter(new FilterFunction<Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
+							@Override
+							public boolean filter(Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> d) throws Exception {
+								return (((d.f5 == 52) && (d.f6 == 56)) || ((d.f5 == 56) && (d.f6 == 52)));
+							}
+						})
+						.map(new MapFunction<Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>, Tuple6<Integer, Integer, Integer, Integer, Integer, Float>>() {
+							@Override
+							public Tuple6<Integer, Integer, Integer, Integer, Integer, Float> map(Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> d) {
+								float distanceMiles = Math.abs(d.f8 - d.f7) / 1609;
+								float timeHours = (d.f1 - d.f0) / 3600;
+								float AvgSpeed = distanceMiles / timeHours;
+								// <Time1, Time2, VID, XWay, Dir, AvgSpd>
+								return new Tuple6<>(d.f0, d.f1, d.f2, d.f3, d.f4, AvgSpeed);
+							}
+						})
+						.filter(new FilterFunction<Tuple6<Integer, Integer, Integer, Integer, Integer, Float>>() {
+							@Override
+							public boolean filter(Tuple6<Integer, Integer, Integer, Integer, Integer, Float> d) throws Exception {
+								return d.f5 > 60.0;
+							}
+						});
+		avgspeed.writeAsCsv(outputFilePath + "/avgspeedfines.csv", FileSystem.WriteMode.OVERWRITE).setParallelism(1);
+
 
 
 
