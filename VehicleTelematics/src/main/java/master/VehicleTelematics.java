@@ -100,7 +100,7 @@ public class VehicleTelematics {
 				input.filter(new FilterFunction<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
 							@Override
 							public boolean filter(Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> d) throws Exception {
-								return ((52 == d.f6) || (d.f6 == 56));
+								return ((52 >= d.f6) || (d.f6 <= 56));
 							}
 						}).setParallelism(1)
 						.map(new MapFunction<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>, Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
@@ -110,7 +110,7 @@ public class VehicleTelematics {
 								return new Tuple9<>(x.f0, x.f0, x.f1, x.f3, x.f5, x.f6, x.f6, x.f7, x.f7);
 							}
 						})
-						.keyBy(2)
+						.keyBy(2, 3, 4)
 						.reduce(new ReduceFunction<Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
 							@Override
 							public Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> reduce(Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> x, Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> y) throws Exception {
@@ -137,7 +137,7 @@ public class VehicleTelematics {
 						.filter(new FilterFunction<Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
 							@Override
 							public boolean filter(Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> d) throws Exception {
-								return (((d.f5 == 52) && (d.f6 == 56)) || ((d.f5 == 56) && (d.f6 == 52)));
+								return (((d.f5 >= 52) && (d.f6 <= 56)) || ((d.f5 <= 56) && (d.f6 >= 52)));
 							}
 						})
 						.map(new MapFunction<Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>, Tuple6<Integer, Integer, Integer, Integer, Integer, Float>>() {
