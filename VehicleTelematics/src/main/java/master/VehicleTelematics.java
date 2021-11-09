@@ -28,11 +28,17 @@ import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.windowing.WindowFunction;
 import org.apache.flink.streaming.api.windowing.windows.GlobalWindow;
+import org.apache.flink.streaming.api.windowing.assigners.GlobalWindows;
+import org.apache.flink.streaming.api.windowing.assigners.EventTimeSessionWindows;
+import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.util.Collector;
+
+import org.apache.flink.streaming.api.functions.timestamps.AscendingTimestampExtractor;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Date;
 
 public class VehicleTelematics {
 
@@ -90,8 +96,6 @@ public class VehicleTelematics {
 		speedFines.writeAsCsv(outputFilePath+"/speedfines.csv", FileSystem.WriteMode.OVERWRITE).setParallelism(1);
 
 
-
-
 		// ---------------------------------------------------------------------------------
 		// Average speed
 
@@ -100,17 +104,24 @@ public class VehicleTelematics {
 				input.filter(new FilterFunction<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
 							@Override
 							public boolean filter(Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> d) throws Exception {
-								return ((52 >= d.f6) || (d.f6 <= 56));
+								return ((52 == d.f6) || (d.f6 == 56));
 							}
 						}).setParallelism(1)
+						.assignTimestampsAndWatermarks(new AscendingTimestampExtractor<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
+							@Override
+							public long extractAscendingTimestamp(Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> x) {
+								return x.f0 * 1000;
+							}})
 						.map(new MapFunction<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>, Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
 							@Override
 							public Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> map(Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> x) {
 								// <Time1, Time2, VID, XWay, Dir, Seg1, Seg2, Pos1, Pos2>
-								return new Tuple9<>(x.f0, x.f0, x.f1, x.f3, x.f5, x.f6, x.f6, x.f7, x.f7);
+								Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> res = new Tuple9<>(x.f0, x.f0, x.f1, x.f3, x.f5, x.f6, x.f6, x.f7, x.f7);
+								return res;
 							}
 						})
 						.keyBy(2, 3, 4)
+						.window(EventTimeSessionWindows.withGap(Time.seconds(300)))
 						.reduce(new ReduceFunction<Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
 							@Override
 							public Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> reduce(Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> x, Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> y) throws Exception {
@@ -137,22 +148,22 @@ public class VehicleTelematics {
 						.filter(new FilterFunction<Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
 							@Override
 							public boolean filter(Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> d) throws Exception {
-								return (((d.f5 >= 52) && (d.f6 <= 56)) || ((d.f5 <= 56) && (d.f6 >= 52)));
+								return (((d.f5 == 52) && (d.f6 == 56)) || ((d.f5 == 56) && (d.f6 == 52)));
 							}
 						})
-						.map(new MapFunction<Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>, Tuple6<Integer, Integer, Integer, Integer, Integer, Float>>() {
+						.map(new MapFunction<Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>, Tuple6<Integer, Integer, Integer, Integer, Integer, Double>>() {
 							@Override
-							public Tuple6<Integer, Integer, Integer, Integer, Integer, Float> map(Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> d) {
-								float distanceMiles = Math.abs(d.f8 - d.f7) / 1609;
-								float timeHours = (d.f1 - d.f0) / 3600;
-								float AvgSpeed = distanceMiles / timeHours;
+							public Tuple6<Integer, Integer, Integer, Integer, Integer, Double> map(Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> d) {
+								Double distanceMiles = Math.abs(d.f8 - d.f7) / 1609.0;
+								Double timeHours = (d.f1 - d.f0) / 3600.0;
+								Double AvgSpeed = distanceMiles / timeHours;
 								// <Time1, Time2, VID, XWay, Dir, AvgSpd>
 								return new Tuple6<>(d.f0, d.f1, d.f2, d.f3, d.f4, AvgSpeed);
 							}
 						})
-						.filter(new FilterFunction<Tuple6<Integer, Integer, Integer, Integer, Integer, Float>>() {
+						.filter(new FilterFunction<Tuple6<Integer, Integer, Integer, Integer, Integer, Double>>() {
 							@Override
-							public boolean filter(Tuple6<Integer, Integer, Integer, Integer, Integer, Float> d) throws Exception {
+							public boolean filter(Tuple6<Integer, Integer, Integer, Integer, Integer, Double> d) throws Exception {
 								return d.f5 > 60.0;
 							}
 						});
@@ -162,7 +173,7 @@ public class VehicleTelematics {
 
 
 		// Accident Reporter
-		
+	
 		// A map function that works on the previously filtered and windowed data calculates the start and stop time of each 4 element and returns a tuple7
 		class accidentMap implements WindowFunction<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>, Tuple7<Integer, Integer, Integer, Integer, Integer, Integer, Integer>, Tuple, GlobalWindow> {
 			@Override 
