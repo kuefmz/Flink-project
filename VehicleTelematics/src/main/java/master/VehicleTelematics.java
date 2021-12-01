@@ -71,7 +71,7 @@ public class VehicleTelematics {
 					Integer.parseInt(fieldArray[7])); //Horizontal position (0, 527999)
 				return out;
 			}
-		}).setParallelism(1);
+		}).setParallelism(3);
 
 
 
@@ -89,7 +89,7 @@ public class VehicleTelematics {
 					map(Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> d) throws Exception{
 						Tuple6<Integer, Integer, Integer, Integer, Integer, Integer> res = new Tuple6<> (d.f0, d.f1, d.f3, d.f6, d.f5, d.f2);
 						return res;
-					}});
+					}}).setParallelism(3);
 		
 		// print the results for speedfines
 		speedFines.writeAsCsv(outputFilePath+"/speedfines.csv", FileSystem.WriteMode.OVERWRITE).setParallelism(1);
@@ -104,7 +104,7 @@ public class VehicleTelematics {
 							public boolean filter(Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> d) throws Exception {
 								return ((52 == d.f6) || (d.f6 == 56));
 							}
-						}).setParallelism(1)
+						}).setParallelism(3)
 						//.assignTimestampsAndWatermarks(new AscendingTimestampExtractor<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
 						//	@Override
 						//	public long extractAscendingTimestamp(Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> x) {
@@ -202,7 +202,7 @@ public class VehicleTelematics {
 			public boolean filter(Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> d) throws Exception {
 				return (d.f2 == 0);
 			}
-		}).setParallelism(1)
+		}).setParallelism(3)
 			.keyBy(1, 3, 6, 5, 7) // keyby in order to count the wehicles only if they are stopped in the same place
 			.countWindow(4, 1) //window of 4 elements slided by each element
 			.apply(new accidentMap()); //applyting the map function
