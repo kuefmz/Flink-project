@@ -56,7 +56,7 @@ public class VehicleTelematics {
         DataStream<String> text = env.readTextFile(inputFilePath).setParallelism(1);
 		
 		// parse input to Tuple8
-		SingleOutputStreamOperator<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> input = text.
+		DataStream<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>> input = text.
 		map(new MapFunction<String, Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
 			public Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> map(String in) throws Exception{
 				String[] fieldArray = in.split(",");
@@ -77,8 +77,7 @@ public class VehicleTelematics {
 
 
 		// Speed radar
-
-		SingleOutputStreamOperator speedFines = input.filter(new FilterFunction<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
+		DataStream speedFines = input.filter(new FilterFunction<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
 			@Override
 			public boolean filter(Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> d) throws Exception {
 				return (d.f2 > 90);
@@ -99,19 +98,19 @@ public class VehicleTelematics {
 		// ---------------------------------------------------------------------------------
 		// Average speed
 
-
-		SingleOutputStreamOperator avgspeed =
+		DataStream avgspeed =
 				input.filter(new FilterFunction<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
 							@Override
 							public boolean filter(Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> d) throws Exception {
 								return ((52 == d.f6) || (d.f6 == 56));
 							}
 						}).setParallelism(1)
-						.assignTimestampsAndWatermarks(new AscendingTimestampExtractor<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
-							@Override
-							public long extractAscendingTimestamp(Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> x) {
-								return x.f0 * 1000;
-							}})
+						//.assignTimestampsAndWatermarks(new AscendingTimestampExtractor<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
+						//	@Override
+						//	public long extractAscendingTimestamp(Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> x) {
+						//		return x.f0 * 1000;
+						//cd 
+						//}})
 						.map(new MapFunction<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>, Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
 							@Override
 							public Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> map(Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> x) {
@@ -121,7 +120,7 @@ public class VehicleTelematics {
 							}
 						})
 						.keyBy(2, 3, 4)
-						.window(EventTimeSessionWindows.withGap(Time.seconds(300)))
+						//.window(EventTimeSessionWindows.withGap(Time.seconds(300)))
 						.reduce(new ReduceFunction<Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
 							@Override
 							public Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> reduce(Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> x, Tuple9<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> y) throws Exception {
@@ -198,7 +197,7 @@ public class VehicleTelematics {
 	}
 
 		// filter to speed 0
-		SingleOutputStreamOperator accidents = input.filter(new FilterFunction<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
+		DataStream accidents = input.filter(new FilterFunction<Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer>>() {
 			@Override
 			public boolean filter(Tuple8<Integer, Integer, Integer, Integer, Integer, Integer, Integer, Integer> d) throws Exception {
 				return (d.f2 == 0);
